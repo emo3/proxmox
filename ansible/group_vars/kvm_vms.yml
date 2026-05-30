@@ -1,0 +1,33 @@
+---
+# Variables for all KVM VMs
+
+# System settings
+system_timezone: "UTC"
+system_hostname_prefix: "almalinux-vm"
+
+# Package lists
+system_packages:
+  - git
+  - curl
+  - wget
+  - vim
+  - nano
+  - htop
+  - net-tools
+  - bind-utils
+  - telnet
+  - python3-pip
+  - openssh-server
+  - openssh-clients
+  - firewalld
+  - rsync
+
+# Firewall settings
+firewall_enabled: true
+firewall_services:
+  - http
+  - https
+  - ssh
+
+# SSH settings
+ssh_enabled: true

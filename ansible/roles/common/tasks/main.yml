@@ -1,0 +1,96 @@
+---
+- name: System Information
+  debug:
+    msg: "Configuring {{ inventory_hostname }} on {{ ansible_os_family }}"
+
+- name: Update all packages to latest
+  dnf:
+    name: "*"
+    state: latest
+  register: dnf_update
+  tags:
+    - packages
+
+- name: Install essential packages
+  dnf:
+    name: "{{ system_packages }}"
+    state: present
+  tags:
+    - packages
+
+- name: Set system timezone
+  timezone:
+    name: "{{ system_timezone }}"
+  tags:
+    - system
+
+- name: Set hostname
+  hostname:
+    name: "{{ system_hostname_prefix }}-{{ inventory_hostname.split('-')[-1] }}"
+  tags:
+    - system
+
+- name: Enable firewalld
+  systemd:
+    name: firewalld
+    enabled: yes
+    state: started
+  when: firewall_enabled
+  tags:
+    - firewall
+
+- name: Configure firewall services
+  firewalld:
+    service: "{{ item }}"
+    permanent: yes
+    state: enabled
+  loop: "{{ firewall_services }}"
+  notify: reload firewall
+  when: firewall_enabled
+  tags:
+    - firewall
+
+- name: Enable SSH service
+  systemd:
+    name: sshd
+    enabled: yes
+    state: started
+  when: ssh_enabled
+  tags:
+    - ssh
+
+- name: Create /opt/scripts directory
+  file:
+    path: /opt/scripts
+    state: directory
+    mode: '0755'
+  tags:
+    - setup
+
+- name: Create system info script
+  copy:
+    content: |
+      #!/bin/bash
+      echo "=== System Information ==="
+      echo "Hostname: $(hostname)"
+      echo "IP Address: $(hostname -I)"
+      echo "Kernel: $(uname -r)"
+      echo "Memory: $(free -h | grep Mem | awk '{print $2}')"
+      echo "CPU Cores: $(nproc)"
+      echo "Uptime: $(uptime -p)"
+    dest: /opt/scripts/sysinfo.sh
+    mode: '0755'
+  tags:
+    - setup
+
+- name: Print update summary
+  debug:
+    msg: "System update completed. {{ dnf_update.changed | ternary('Packages were updated', 'No updates available') }}"
+  tags:
+    - packages
+
+handlers:
+  - name: reload firewall
+    systemd:
+      name: firewalld
+      state: reloaded

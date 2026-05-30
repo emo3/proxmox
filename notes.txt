@@ -1,0 +1,7 @@
+cd /home/emo3/code/proxmox/scripts
+
+# Make script executable
+chmod +x setup-host.sh
+
+# Run it
+./setup-host.sh

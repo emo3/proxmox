@@ -1,0 +1,18 @@
+---
+- name: Configure all KVM VMs
+  hosts: kvm_vms
+  become: yes
+  roles:
+    - common
+  tags:
+    - all
+
+  post_tasks:
+    - name: Final system info
+      command: /opt/scripts/sysinfo.sh
+      register: sysinfo
+      changed_when: false
+
+    - name: Display system info
+      debug:
+        msg: "{{ sysinfo.stdout_lines }}"

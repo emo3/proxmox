@@ -1,0 +1,64 @@
+# =========================
+# Terraform
+# =========================
+
+# Terraform working directory
+**/.terraform/*
+**/.terraform/
+
+# Terraform state files
+*.tfstate
+*.tfstate.*
+
+# Crash logs
+crash.log
+
+# Terraform variable files (often contain secrets)
+*.tfvars
+*.tfvars.json
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Terraform CLI configuration files
+.terraformrc
+terraform.rc
+
+# Keep provider lock file under version control
+# (recommended by HashiCorp)
+!.terraform.lock.hcl
+
+# =========================
+# Secrets
+# =========================
+
+*.pem
+*.key
+*.p12
+*.pfx
+
+# =========================
+# Editors / IDEs
+# =========================
+
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# =========================
+# OS Files
+# =========================
+
+.DS_Store
+Thumbs.db
+
+# =========================
+# Logs
+# =========================
+
+*.log
