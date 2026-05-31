@@ -4,24 +4,11 @@ This directory contains infrastructure automation for a Proxmox environment usin
 
 ## What’s here
 
-- `terraform/`
-  - Terraform configuration for provisioning / managing Proxmox resources.
-  - Files:
-    - `main.tf`, `providers.tf`, `variables.tf`, `outputs.tf`
-    - `.terraform.lock.hcl`
-- `ansible/`
-  - Ansible playbooks/roles to configure hosts and deploy services.
-  - Files:
-    - `site.yml`
-    - `ansible.cfg`
-    - `group_vars/`
-    - `roles/`
-- `scripts/`
-  - Convenience scripts to set up hosts, deploy with Terraform, snapshot, teardown, etc.
-  - Files:
-    - `configure-vms.sh`, `setup-host.sh`, `terraform-deploy.sh`, `snapshot-vms.sh`, `teardown.sh`
-- `notes.txt`
-  - Project notes / reminders.
+ANSIBLE_DIR="/home/emo3/code/proxmox/ansible"
+
+cd "$ANSIBLE_DIR"
+
+ansible-playbook create-initial-box.yml
 
 ## Typical workflow
 

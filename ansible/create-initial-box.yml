@@ -1,0 +1,121 @@
+- name: Create initial libvirt VM and configure host inventory
+  hosts: localhost
+  connection: local
+  become: yes
+  gather_facts: false
+
+  vars:
+    vm_name: proxmox-lab
+
+    vm_memory: 8192
+    vm_vcpus: 4
+    disk_path: /var/lib/libvirt/images/proxmox-lab.qcow2
+
+    disk_size: "50"
+
+
+    iso_path: /var/lib/libvirt/images/iso/proxmox.iso
+    network_name: default
+    os_variant: generic
+    ssh_user: root
+
+  tasks:
+    - name: Ensure scripts directory exists
+      file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
+    - name: Create VM using virt-install (idempotent)
+      ansible.builtin.shell: >-
+        set -euo pipefail;
+        if virsh list --all --name | grep -qx '{{ vm_name }}'; then
+          echo "VM '{{ vm_name }}' already exists. Skipping virt-install.";
+          exit 0;
+        fi;
+        if [ -f '{{ disk_path }}' ]; then
+          DISK_ARG='path={{ disk_path }}';
+        else
+          DISK_ARG='path={{ disk_path }},size={{ disk_size }}';
+        fi;
+        virt-install \
+          --name '{{ vm_name }}' \
+          --memory '{{ vm_memory }}' \
+          --vcpus '{{ vm_vcpus }}' \
+          --cpu host \
+          --disk "$DISK_ARG" \
+          --cdrom '{{ iso_path }}' \
+          --os-variant '{{ os_variant }}' \
+          --network 'network={{ network_name }}' \
+          --graphics vnc \
+          --boot cdrom,hd
+      args:
+        executable: /bin/bash
+
+
+    - name: Wait for SSH to become available (best-effort)
+      vars:
+        # Try to discover IP via virsh/guest-agent-less method (best-effort).
+        # For libvirt "network=default" virt-install may provide DHCP; we try common approaches.
+        attempts: 30
+        sleep_seconds: 10
+      ansible.builtin.shell: |
+        set -euo pipefail
+
+        # Prefer: virsh domifaddr if available
+        if command -v virsh >/dev/null 2>&1; then
+          for i in $(seq 1 "{{ attempts }}"); do
+            # 1) Try guest-agent-less/agent-based addresses
+            IP="$(virsh domifaddr "{{ vm_name }}" --source agent 2>/dev/null | awk '/ipv4/ {print $4}' | cut -d/ -f1 | head -n1 || true)"
+            if [ -z "$IP" ]; then
+              IP="$(virsh domifaddr "{{ vm_name }}" 2>/dev/null | awk '/ipv4/ {print $4}' | cut -d/ -f1 | head -n1 || true)"
+            fi
+
+            # 2) Fallback: parse DHCP leases (common for default NAT/network)
+            if [ -z "$IP" ]; then
+              VM_MAC="$(virsh domiflist "{{ vm_name }}" 2>/dev/null | awk 'NR>1{print $5}' | head -n1 || true)"
+              if [ -n "$VM_MAC" ]; then
+                IP="$(virsh net-dhcp-leases {{ network_name }} 2>/dev/null | awk -v mac="$VM_MAC" '$0~mac{print $5}' | cut -d/ -f1 | head -n1 || true)"
+              fi
+            fi
+
+            if [ -n "$IP" ]; then
+              echo "$IP"; exit 0
+            fi
+            sleep "{{ sleep_seconds }}"
+          done
+
+          echo "Failed to discover IP for VM '{{ vm_name }}' via virsh domifaddr / dhcp leases" >&2
+          virsh domifaddr "{{ vm_name }}" 2>/dev/null || true
+          virsh net-dhcp-leases {{ network_name }} 2>/dev/null || true
+          exit 1
+        fi
+
+        echo "virsh command not found; cannot discover VM IP" >&2
+        exit 1
+
+      register: initial_vm_ip
+      changed_when: false
+      failed_when: false
+
+    - name: Write inventory for Ansible (inventory.ini)
+      ansible.builtin.copy:
+        dest: /home/emo3/code/proxmox/ansible/inventory.ini
+        mode: '0644'
+        content: |
+          [kvm_vms]
+          {{ vm_name }} ansible_host={{ initial_vm_ip.stdout | default('') | trim }} ansible_user={{ ssh_user }}
+
+          [kvm_vms:vars]
+          ansible_python_interpreter=/usr/bin/python3
+          ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+
+    - name: Show inventory file
+      ansible.builtin.command: cat /home/emo3/code/proxmox/ansible/inventory.ini
+      register: inv
+      changed_when: false
+
+    - name: Debug inventory content
+      ansible.builtin.debug:
+        msg: "{{ inv.stdout }}"
+
