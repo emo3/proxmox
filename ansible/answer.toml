@@ -1,0 +1,20 @@
+[global]
+keyboard = "en-us"
+country = "us"
+fqdn = "pve-node-01.local"
+mailto = "admin@example.local"
+timezone = "America/New_York"
+# Set your secure root password here
+root-password = "SuperSecretPassword123!" 
+reboot-on-error = false
+reboot-mode = "reboot"
+
+[network]
+# Set to 'from-dhcp' for DHCP, or 'from-answer' to define static IP (cidr, dns, gateway)
+source = "from-dhcp"
+
+[disk-setup]
+# File system options: ext4, xfs, zfs, btrfs
+filesystem = "ext4"
+# Specify the disk you want to install Proxmox on
+disk-list = ["sda"]

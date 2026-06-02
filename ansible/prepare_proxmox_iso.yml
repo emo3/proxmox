@@ -2,17 +2,66 @@
 - name: Automate Proxmox VE Unattended ISO Preparation (AlmaLinux 9)
   hosts: localhost
   become: yes
+  gather_facts: true
+
   vars:
     # Dedicated directory to avoid SELinux /tmp restrictions
-    work_dir: "/opt/proxmox-builder"
-    source_iso: "{{ work_dir }}/proxmox-ve.iso" 
+    work_dir: "{{ playbook_dir }}/tmp/proxmox-builder"
+
+    # Where we expect the original Proxmox VE ISO to be located (or downloaded to)
+    # If you already have an ISO elsewhere, set source_iso via --extra-vars.
+    source_iso: "{{ work_dir }}/proxmox-ve.iso"
+
+    # Output ISO with answers injected
     output_iso: "{{ work_dir }}/proxmox-ve-automated.iso"
 
+    # Proxmox VE ISO download settings.
+    proxmox_version: "9.2"
+    proxmox_iso_url: "https://enterprise.proxmox.com/iso/proxmox-ve_{{ proxmox_version }}-1.iso"
+
+    # Use SELinux relabeling on volume mounts when appropriate.
+    podman_mount_suffix: >-
+      {{ (ansible_selinux.status is defined and ansible_selinux.status == 'enabled') | ternary(':z','') }}
+
   tasks:
-    - name: Ensure Podman is installed
-      dnf:
+    - name: Ensure podman is installed (dnf family)
+      ansible.builtin.dnf:
         name: podman
         state: present
+      when: ansible_facts.os_family is defined and ansible_facts.os_family in ['RedHat','Rocky','AlmaLinux','Fedora']
+
+    - name: Ensure podman is installed (apt family)
+      ansible.builtin.apt:
+        name: podman
+        state: present
+        update_cache: true
+      when: ansible_facts.os_family is defined and ansible_facts.os_family == 'Debian'
+
+    - name: Ensure wget is installed (dnf family)
+      ansible.builtin.dnf:
+        name: wget
+        state: present
+      when: ansible_facts.os_family is defined and ansible_facts.os_family in ['RedHat','Rocky','AlmaLinux','Fedora']
+
+    - name: Ensure wget is installed (apt family)
+      ansible.builtin.apt:
+        name: wget
+        state: present
+        update_cache: true
+      when: ansible_facts.os_family is defined and ansible_facts.os_family == 'Debian'
+
+    - name: Ensure curl is installed (dnf family) # fallback
+      ansible.builtin.dnf:
+        name: curl
+        state: present
+      when: ansible_facts.os_family is defined and ansible_facts.os_family in ['RedHat','Rocky','AlmaLinux','Fedora']
+
+    - name: Ensure curl is installed (apt family) # fallback
+      ansible.builtin.apt:
+        name: curl
+        state: present
+        update_cache: true
+      when: ansible_facts.os_family is defined and ansible_facts.os_family == 'Debian'
 
     - name: Create working directory
       file:
@@ -54,24 +103,69 @@
           RUN apt-get update && apt-get install -y proxmox-auto-install-assistant
         mode: '0644'
 
-    - name: Fail if the source ISO is not in the working directory
+    - name: Check if source ISO already exists
       stat:
         path: "{{ source_iso }}"
       register: iso_check
 
+    - name: Download Proxmox VE ISO if missing
+      when:
+        - not iso_check.stat.exists
+        - proxmox_iso_url | length > 0
+      block:
+        - name: Ensure curl is installed
+          dnf:
+            name:
+              - curl
+            state: present
+
+        - name: Download Proxmox VE ISO (wget preferred, curl fallback)
+          command: >-
+            sh -lc '
+            if command -v wget >/dev/null 2>&1; then
+              wget -O "{{ source_iso }}" "{{ proxmox_iso_url }}";
+            else
+              curl -L --fail --output "{{ source_iso }}" "{{ proxmox_iso_url }}";
+            fi'
+          args:
+            creates: "{{ source_iso }}"
+
+    - name: Check source ISO again (after optional download)
+      stat:
+        path: "{{ source_iso }}"
+      register: iso_check_after
+
+    - name: Validate downloaded ISO looks plausible
+      when: iso_check_after.stat.exists
+      assert:
+        that:
+          - iso_check_after.stat.size | int > proxmox_iso_min_bytes | int
+        fail_msg: "Downloaded ISO at {{ source_iso }} is smaller than expected. Delete it and retry."
+
     - name: Halt playbook if ISO is missing
-      fail:
-        msg: "Please download the Proxmox ISO and place it at {{ source_iso }} before running this playbook."
-      when: not iso_check.stat.exists
+      ansible.builtin.fail:
+        msg: >-
+          Proxmox ISO is missing at {{ source_iso }}.
+          Provide it manually at that path, or pass --extra-vars "proxmox_iso_url=<URL>" to download it.
+      when:
+        - not iso_check_after.stat.exists
+        - (proxmox_iso_url | length == 0)
 
     - name: Build the Podman builder image
-      command: podman build -t proxmox-iso-builder "{{ work_dir }}"
+      ansible.builtin.command: podman build -t proxmox-iso-builder "{{ work_dir }}"
+
+    - name: Preflight check - verify podman and assistant availability
+      ansible.builtin.command: >-
+        podman run --rm
+        -v "{{ work_dir }}:/mnt{{ podman_mount_suffix }}"
+        proxmox-iso-builder
+        bash -lc 'command -v proxmox-auto-install-assistant && proxmox-auto-install-assistant --help | head -n 50'
+      changed_when: false
 
     - name: Run container to prepare the automated ISO
-      # The :z flag ensures SELinux allows the container to read/write to the mounted volume
-      command: >
+      ansible.builtin.command: >-
         podman run --rm
-        -v "{{ work_dir }}:/mnt:z"
+        -v "{{ work_dir }}:/mnt{{ podman_mount_suffix }}"
         proxmox-iso-builder
         proxmox-auto-install-assistant prepare-iso /mnt/proxmox-ve.iso --fetch-from iso --answer-file /mnt/answer.toml --output /mnt/proxmox-ve-automated.iso
       args:
