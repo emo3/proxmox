@@ -8,6 +8,11 @@
     # Dedicated directory to avoid SELinux /tmp restrictions
     work_dir: "{{ playbook_dir }}/tmp/proxmox-builder"
 
+    # Minimum ISO size sanity check.
+    # Your known-good proxmox-ve.iso size is 1706178560 bytes; keep a margin to catch truncated/corrupt downloads.
+    proxmox_iso_min_bytes: 1620869632
+
+
     # Where we expect the original Proxmox VE ISO to be located (or downloaded to)
     # If you already have an ISO elsewhere, set source_iso via --extra-vars.
     source_iso: "{{ work_dir }}/proxmox-ve.iso"
