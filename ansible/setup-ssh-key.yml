@@ -1,0 +1,30 @@
+---
+- name: Bootstrap SSH Key Authentication for Proxmox
+  hosts: kvm_vms
+  gather_facts: no
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+    ssh_key_path: "{{ lookup('env', 'HOME') }}/.ssh/id_ed25519_proxmox"
+
+  tasks:
+
+    - name: Deploy SSH public key to remote server
+      authorized_key:
+        user: root
+        state: present
+        key: "{{ lookup('file', ssh_key_path + '.pub') }}"
+        comment: "ansible-proxmox"
+        manage_dir: yes
+
+    - name: Disable password authentication (security hardening)
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+      notify: Restart SSH
+
+  handlers:
+    - name: Restart SSH
+      service:
+        name: sshd
+        state: restarted

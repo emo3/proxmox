@@ -6,15 +6,13 @@
 
   vars:
     vm_name: proxmox-lab
-
     vm_memory: 8192
     vm_vcpus: 4
     disk_path: /var/lib/libvirt/images/proxmox-lab.qcow2
-
     disk_size: "50"
-
-
-    iso_path: /var/lib/libvirt/images/iso/proxmox.iso
+    # Use the ISO created by prepare_proxmox_iso.yml (located in ansible/tmp)
+    iso_path: "{{ playbook_dir }}/tmp/proxmox-ve-automated.iso"
+    iso_required_dir: "{{ playbook_dir }}/tmp"
     network_name: default
     os_variant: generic
     ssh_user: root
@@ -26,9 +24,43 @@
         state: directory
         mode: '0755'
 
+    - name: Ensure ISO directory exists (for local ISO path)
+      ansible.builtin.file:
+        path: "{{ iso_required_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Ensure libvirt images directory exists (for disk path)
+      ansible.builtin.file:
+        path: "/var/lib/libvirt/images"
+        state: directory
+        mode: '0755'
+
+    - name: Ensure libvirt ISO directory exists (for install media)
+      ansible.builtin.file:
+        path: "/var/lib/libvirt/images/iso"
+        state: directory
+        mode: '0755'
+
+    - name: Copy automated ISO into libvirt-readable location
+      ansible.builtin.copy:
+        src: "{{ iso_path }}"
+        dest: "/var/lib/libvirt/images/iso/proxmox-ve-automated.iso"
+        mode: '0644'
+        remote_src: false
+      become: yes
+
+    - name: Use libvirt-readable ISO path
+      ansible.builtin.set_fact:
+        iso_path_libvirt: "/var/lib/libvirt/images/iso/proxmox-ve-automated.iso"
+
     - name: Create VM using virt-install (idempotent)
       ansible.builtin.shell: >-
         set -euo pipefail;
+        if [ ! -f '{{ iso_path }}' ]; then
+          echo "ERROR: Proxmox ISO not found at {{ iso_path }}. Run prepare_proxmox_iso.yml first." >&2;
+          exit 1;
+        fi;
         if virsh list --all --name | grep -qx '{{ vm_name }}'; then
           echo "VM '{{ vm_name }}' already exists. Skipping virt-install.";
           exit 0;
@@ -44,14 +76,13 @@
           --vcpus '{{ vm_vcpus }}' \
           --cpu host \
           --disk "$DISK_ARG" \
-          --cdrom '{{ iso_path }}' \
+          --cdrom '{{ iso_path_libvirt | default(iso_path) }}' \
           --os-variant '{{ os_variant }}' \
           --network 'network={{ network_name }}' \
           --graphics vnc \
           --boot cdrom,hd
       args:
         executable: /bin/bash
-
 
     - name: Wait for SSH to become available (best-effort)
       vars:
@@ -118,4 +149,3 @@
     - name: Debug inventory content
       ansible.builtin.debug:
         msg: "{{ inv.stdout }}"
-

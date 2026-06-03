@@ -2,16 +2,15 @@
 - name: Automate Proxmox VE Unattended ISO Preparation (AlmaLinux 9)
   hosts: localhost
   become: yes
+  become_user: "{{ ansible_user_id | default(lookup('env','USER')) }}"
   gather_facts: true
 
   vars:
     # Dedicated directory to avoid SELinux /tmp restrictions
-    work_dir: "{{ playbook_dir }}/tmp/proxmox-builder"
+    work_dir: "{{ playbook_dir }}/tmp"
 
-    # Minimum ISO size sanity check.
-    # Your known-good proxmox-ve.iso size is 1706178560 bytes; keep a margin to catch truncated/corrupt downloads.
-    proxmox_iso_min_bytes: 1620869632
-
+    # Expected SHA256 of the ISO.
+    proxmox_iso_sha256: "4e88fe416df9b527624a175f24c9aa07c714d3332afb1ee3dbf3879573ef2c6c"
 
     # Where we expect the original Proxmox VE ISO to be located (or downloaded to)
     # If you already have an ISO elsewhere, set source_iso via --extra-vars.
@@ -35,25 +34,11 @@
         state: present
       when: ansible_facts.os_family is defined and ansible_facts.os_family in ['RedHat','Rocky','AlmaLinux','Fedora']
 
-    - name: Ensure podman is installed (apt family)
-      ansible.builtin.apt:
-        name: podman
-        state: present
-        update_cache: true
-      when: ansible_facts.os_family is defined and ansible_facts.os_family == 'Debian'
-
     - name: Ensure wget is installed (dnf family)
       ansible.builtin.dnf:
         name: wget
         state: present
       when: ansible_facts.os_family is defined and ansible_facts.os_family in ['RedHat','Rocky','AlmaLinux','Fedora']
-
-    - name: Ensure wget is installed (apt family)
-      ansible.builtin.apt:
-        name: wget
-        state: present
-        update_cache: true
-      when: ansible_facts.os_family is defined and ansible_facts.os_family == 'Debian'
 
     - name: Ensure curl is installed (dnf family) # fallback
       ansible.builtin.dnf:
@@ -61,18 +46,13 @@
         state: present
       when: ansible_facts.os_family is defined and ansible_facts.os_family in ['RedHat','Rocky','AlmaLinux','Fedora']
 
-    - name: Ensure curl is installed (apt family) # fallback
-      ansible.builtin.apt:
-        name: curl
-        state: present
-        update_cache: true
-      when: ansible_facts.os_family is defined and ansible_facts.os_family == 'Debian'
-
     - name: Create working directory
       file:
         path: "{{ work_dir }}"
         state: directory
         mode: '0755'
+        owner: "{{ ansible_user_id | default(lookup('env','USER')) }}"
+        group: "{{ ansible_user_id | default(lookup('env','USER')) }}"
 
     - name: Generate the answer.toml file
       copy:
@@ -140,12 +120,33 @@
         path: "{{ source_iso }}"
       register: iso_check_after
 
-    - name: Validate downloaded ISO looks plausible
+    - name: Ensure SHA256 verification variable is set
       when: iso_check_after.stat.exists
-      assert:
+      ansible.builtin.assert:
         that:
-          - iso_check_after.stat.size | int > proxmox_iso_min_bytes | int
-        fail_msg: "Downloaded ISO at {{ source_iso }} is smaller than expected. Delete it and retry."
+          - proxmox_iso_sha256 is defined
+          - proxmox_iso_sha256 != 'REPLACE_ME_WITH_KNOWN_GOOD_SHA256'
+        fail_msg: >-
+          "Set proxmox_iso_sha256 in this playbook to the known-good sha256sum for proxmox-ve_{{ proxmox_version }}-1.iso (or pass it via --extra-vars)."
+
+    - name: Validate downloaded ISO checksum (sha256)
+      when:
+        - iso_check_after.stat.exists
+        - proxmox_iso_sha256 is defined
+      ansible.builtin.command: >-
+        sha256sum "{{ source_iso }}"
+      register: iso_sha256
+      changed_when: false
+
+    - name: Assert ISO sha256 matches expected
+      when:
+        - iso_check_after.stat.exists
+        - proxmox_iso_sha256 is defined
+      ansible.builtin.assert:
+        that:
+          - (iso_sha256.stdout.split()[0] | lower) == (proxmox_iso_sha256 | lower)
+        fail_msg: >-
+          "SHA256 mismatch for {{ source_iso }}. Expected {{ proxmox_iso_sha256 }}, got {{ iso_sha256.stdout.split()[0] }}. Delete it and retry."
 
     - name: Halt playbook if ISO is missing
       ansible.builtin.fail:
@@ -158,6 +159,14 @@
 
     - name: Build the Podman builder image
       ansible.builtin.command: podman build -t proxmox-iso-builder "{{ work_dir }}"
+
+    - name: Ensure work_dir ownership is correct before container runs
+      ansible.builtin.file:
+        path: "{{ work_dir }}"
+        state: directory
+        owner: "{{ ansible_user_id | default(lookup('env','USER')) }}"
+        group: "{{ ansible_user_id | default(lookup('env','USER')) }}"
+        recurse: true
 
     - name: Preflight check - verify podman and assistant availability
       ansible.builtin.command: >-
@@ -175,6 +184,14 @@
         proxmox-auto-install-assistant prepare-iso /mnt/proxmox-ve.iso --fetch-from iso --answer-file /mnt/answer.toml --output /mnt/proxmox-ve-automated.iso
       args:
         creates: "{{ output_iso }}"
+
+    - name: Fix work_dir ownership after container run (avoid root-owned artifacts)
+      ansible.builtin.file:
+        path: "{{ work_dir }}"
+        state: directory
+        owner: "{{ ansible_user_id | default(lookup('env','USER')) }}"
+        group: "{{ ansible_user_id | default(lookup('env','USER')) }}"
+        recurse: true
 
     - name: Success message
       debug:
