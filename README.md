@@ -4,11 +4,8 @@ This directory contains infrastructure automation for a Proxmox environment usin
 
 ## What’s here
 
-ANSIBLE_DIR="/home/emo3/code/proxmox/ansible"
-
-cd "$ANSIBLE_DIR"
-
-ansible-playbook create-initial-box.yml
+Terraform lives in `proxmox/terraform/` (see `proxmox/terraform/README.md`).
+Ansible lives in `proxmox/ansible/` (see `proxmox/ansible/README.md`).
 
 ## Typical workflow
 
@@ -25,6 +22,7 @@ ansible-playbook create-initial-box.yml
 
 - Terraform state and plans are not meant to be committed.
 - Avoid committing secrets (Terraform/Ansible variables containing credentials).
+- `proxmox/ansible/.passwd` is gitignored (see `proxmox/.gitignore`); regenerate/manage it locally as needed.
 
 ## Docs / references
 
