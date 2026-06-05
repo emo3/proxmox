@@ -1,79 +1,85 @@
-variable "vm_count" {
-  description = "Number of VMs to create"
-  type        = number
-  default     = 2
-}
-
-variable "vm_name_prefix" {
-  description = "Prefix for VM names"
+variable "proxmox_host" {
   type        = string
-  default     = "kvm"
+  description = "Proxmox API host (DNS name or IP)."
 }
 
-variable "vm_memory" {
-  description = "Memory in MB"
-  type        = number
-  default     = 2048
-}
-
-variable "vm_cpus" {
-  description = "Number of CPUs"
-  type        = number
-  default     = 2
-}
-
-variable "vm_disk_size" {
-  description = "Disk size in bytes (default 20GB)"
-  type        = number
-  default     = 21474836480
-}
-
-variable "network_name" {
-  description = "KVM network name"
+variable "proxmox_api_token_id" {
   type        = string
-  default     = "kvm-lab"
+  description = "Proxmox API token identifier (e.g., user!tokenid)."
 }
 
-variable "network_cidr" {
-  description = "Network CIDR"
+variable "proxmox_api_token" {
   type        = string
-  default     = "192.168.122.0/24"
+  description = "Proxmox API token secret."
+  sensitive   = true
 }
 
-variable "template_path" {
-  description = "Path to AlmaLinux template image"
+variable "proxmox_tls_insecure" {
+  type        = bool
+  description = "If true, allow self-signed TLS certificates."
+  default     = true
+}
+
+variable "proxmox_node" {
   type        = string
-  default     = "/home/emo3/kvm-images/almalinux9-template.qcow2"
+  description = "Proxmox node name."
+}
+
+variable "lxc_template" {
+  type        = string
+  description = "LXC template (e.g. local:vztmpl/debian-12-standard_12.0-1_amd64.tar.zst)."
+}
+
+variable "lxc_storage" {
+  type        = string
+  description = "LXC root filesystem storage."
+}
+
+variable "lxc_network_bridge" {
+  type        = string
+  description = "Network bridge (e.g. vmbr0)."
+}
+
+variable "lxc_architecture" {
+  type        = string
+  description = "Architecture (amd64/arm64)."
+  default     = "amd64"
 }
 
 variable "ssh_public_key" {
-  description = "SSH public key to inject into cloud-init"
   type        = string
-  default     = ""
+  description = "SSH public key installed into the LXC."
 }
 
-variable "cloudinit_seed_path" {
-  description = "Directory to store generated cloud-init config-drive files"
+variable "gitlab_old_name" {
   type        = string
-  default     = "/var/lib/libvirt/images/kvm-lab"
+  default     = "gitlab-old"
+}
+
+variable "gitlab_new_name" {
+  type        = string
+  default     = "gitlab-new"
+}
+
+variable "use_static_ip" {
+  type        = bool
+  description = "Require static IPs for deterministic Ansible targeting. DHCP-less automation currently expects true."
+  default     = true
 }
 
 
-variable "pool_path" {
-  description = "Filesystem path backing the libvirt storage pool"
+variable "lxc_static_ip_old" {
   type        = string
-  default     = "/var/lib/libvirt/images/kvm-lab"
+  default     = "192.168.122.200/24"
 }
 
-variable "domain_os_type" {
-  description = "Libvirt domain os type"
+variable "lxc_static_ip_new" {
   type        = string
-  default     = "hvm"
+  default     = "192.168.122.201/24"
 }
 
-variable "domain_arch" {
-  description = "Libvirt domain architecture"
+variable "lxc_gateway" {
   type        = string
-  default     = "x86_64"
+  default     = "192.168.122.1"
 }
 

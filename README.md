@@ -14,15 +14,11 @@ ansible-playbook create-initial-box.yml
 
 > Exact steps depend on your Proxmox environment.
 
-1. **Provision resources (Terraform)**
-   - Update Terraform variables as needed (example: `terraform.tfvars` if present).
-   - Run Terraform to create/update infrastructure.
-
-2. **Configure resources (Ansible)**
+**Configure resources (Ansible)**
    - Generate/update inventory (if your setup creates `inventory.ini`).
    - Run the playbook in `ansible/site.yml`.
 
-3. **Operational helpers (scripts)**
+**Operational helpers (scripts)**
    - Use scripts in `scripts/` for repeatable tasks (configure VMs, snapshot, teardown).
 
 ## Local development / safety notes
@@ -34,4 +30,3 @@ ansible-playbook create-initial-box.yml
 
 - Terraform docs: https://developer.hashicorp.com/terraform/docs
 - Ansible docs: https://docs.ansible.com/
-

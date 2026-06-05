@@ -1,0 +1,55 @@
+---
+- name: GitLab A/B rollout on two LXC containers
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    gitlab_old_host: "{{ gitlab_old_host | default('gitlab-old') }}"
+    gitlab_new_host: "{{ gitlab_new_host | default('gitlab-new') }}"
+
+    old_ports:
+      http: 8080
+      https: 8443
+    new_ports:
+      http: 8081
+      https: 8444
+
+    # When true, delete the old container after successful verification.
+    delete_old: false
+
+    # GitLab volumes/migration paths
+    gitlab_paths:
+      - /etc/gitlab
+      - /var/opt/gitlab
+      - /var/log/gitlab
+
+  tasks:
+    - name: Ensure target hosts are reachable and gather basic info
+      ansible.builtin.debug:
+        msg: "This playbook is a scaffolding. Provide an inventory that maps gitlab-old/gitlab-new to IPs."
+
+    - name: TODO - Install container runtime (docker/podman)
+      ansible.builtin.debug:
+        msg: "Implement docker/compose install + systemd unit on both targets."
+
+    - name: TODO - Start gitlab-old and gitlab-new with compose templates
+      ansible.builtin.debug:
+        msg: "Implement A/B compose deployment on different ports."
+
+    - name: TODO - Migrate data old -> new
+      ansible.builtin.debug:
+        msg: "Implement rsync/backup restore for /etc/gitlab and /var/opt/gitlab."
+
+    - name: TODO - Verify new
+      ansible.builtin.debug:
+        msg: "Implement health checks (HTTP + optional gitlab-rake check)."
+
+    - name: TODO - Cutover
+      ansible.builtin.debug:
+        msg: "Since no reverse proxy exists, implement a port swap / active endpoint config."
+
+    - name: TODO - Stop old and optionally delete
+      ansible.builtin.debug:
+        msg: "Stop old instance; if delete_old then destroy it (or stop and keep volumes)."
+

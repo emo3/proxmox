@@ -35,6 +35,7 @@ terraform.rc
 # Secrets
 # =========================
 
+.passwd
 *.pem
 *.key
 *.p12

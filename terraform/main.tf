@@ -1,73 +1,79 @@
-# Create storage pool
-# NOTE: dmacvicar/libvirt v0.9.7 expects a libvirt XML definition for the pool.
-# The minimal schema here is just enough to avoid Terraform-side validation errors;
-# libvirt itself will still require a backing path.
-resource "libvirt_pool" "kvm_lab" {
-  name = "kvm-lab"
-  type = "dir"
-
-  # dmacvicar/libvirt v0.9.7 expects this field to set the backing directory.
-  path = var.pool_path
+provider "proxmox" {
+  pm_api_url          = "https://${var.proxmox_host}:8006/api2/json"
+  pm_api_token_id     = var.proxmox_api_token_id
+  pm_api_token_secret = var.proxmox_api_token
+  pm_tls_insecure     = true
+  pm_debug            = true
 }
 
-
-
-
-
-# Do not attempt to create/manage the network in Terraform for now.
-# Your current apply failed because the network already exists.
-# (You can re-enable network management once pool + domain are correct.)
-# resource "libvirt_network" "kvm_lab" {
-#   name = var.network_name
-# }
-
-# Import template volume (declared only; cloning/attaching per-VM disks is not implemented yet).
-resource "libvirt_volume" "almalinux_template" {
-  name = "almalinux9-template.qcow2"
-  pool = libvirt_pool.kvm_lab.name
-
-  # NOTE: this provider marks `path` as read-only, so we only define the volume.
-  type = "file"
+locals {
+  default_cores     = 2
+  default_memory_mb = 4096
+  default_disk_gb   = 30
+  old_vmid          = 3000
+  new_vmid          = 3001
 }
 
-# Create per-VM cloned disks + cloud-init config drive + domain XML.
-resource "libvirt_volume" "vm_disk" {
-  count = var.vm_count
+resource "proxmox_lxc" "gitlab_old" {
+  target_node = var.proxmox_node
+  hostname    = var.gitlab_old_name
+  ostemplate  = var.lxc_template
+  ostype      = "debian"
 
-  name = "${var.vm_name_prefix}-vm-${count.index + 1}.qcow2"
-  pool = libvirt_pool.kvm_lab.name
-  # The provider doesn't model cloning; libvirt will accept an existing backing file.
-  # We rely on libvirt XML `source` to point to the expected qcow2 path.
-  type = "file"
+  vmid         = local.old_vmid
+  unprivileged = true
+  cores        = local.default_cores
+  memory       = local.default_memory_mb
+  swap         = 1024
+
+  rootfs {
+    storage = var.lxc_storage
+    size    = "${local.default_disk_gb}G"
+  }
+
+  network {
+    name   = "eth0"
+    bridge = var.lxc_network_bridge
+    ip     = var.use_static_ip ? var.lxc_static_ip_old : "dhcp"
+    gw     = var.use_static_ip ? var.lxc_gateway : null
+  }
+
+  ssh_public_keys = var.ssh_public_key
+  onboot          = true
+
+  lifecycle {
+    ignore_changes = [network]
+  }
 }
 
-# Note: we generate cloud-init files locally and reference them in domain XML.
-resource "libvirt_domain" "vm" {
-  count = var.vm_count
+resource "proxmox_lxc" "gitlab_new" {
+  target_node = var.proxmox_node
+  hostname    = var.gitlab_new_name
+  ostemplate  = var.lxc_template
+  ostype      = "debian"
 
-  name = "${var.vm_name_prefix}-vm-${count.index + 1}"
+  vmid         = local.new_vmid
+  unprivileged = true
+  cores        = local.default_cores
+  memory       = local.default_memory_mb
+  swap         = 1024
 
-  # dmacvicar/libvirt v0.9.x uses `xml` to set full domain definition.
-  xml = templatefile("${path.module}/domain-xml.tmpl", {
-    vm_name       = "${var.vm_name_prefix}-vm-${count.index + 1}"
-    vm_memory     = var.vm_memory
-    vm_cpus       = var.vm_cpus
-    domain_arch   = var.domain_arch
-    domain_os_type = var.domain_os_type
+  rootfs {
+    storage = var.lxc_storage
+    size    = "${local.default_disk_gb}G"
+  }
 
-    network_name  = var.network_name
+  network {
+    name   = "eth0"
+    bridge = var.lxc_network_bridge
+    ip     = var.use_static_ip ? var.lxc_static_ip_new : "dhcp"
+    gw     = var.use_static_ip ? var.lxc_gateway : null
+  }
 
-    disk_path = "${var.cloudinit_seed_path}/${var.vm_name_prefix}-vm-${count.index + 1}.qcow2"
+  ssh_public_keys = var.ssh_public_key
+  onboot          = true
 
-    # cloud-init config-drive files are expected to exist on the libvirt host.
-    cloudinit_path = "${var.cloudinit_seed_path}/${var.vm_name_prefix}-vm-${count.index + 1}-seed.iso"
-  })
-
-  autostart = true
+  lifecycle {
+    ignore_changes = [network]
+  }
 }
-
-
-
-
-
-
